@@ -97,12 +97,19 @@ docker compose up -d --build  # alongside the Hostinger Traefik project
 Point the `DOMAIN_NAME` A record at the VPS **before** the first request; the ACME
 TLS challenge fails otherwise.
 
-On a VPS without that template, start the bundled proxy instead (same entrypoint and
-resolver names, so the app labels are unchanged):
+Set exactly one hostname variable in `.env`: `TRAEFIK_HOST=<base domain>` serves the
+app at `<compose-project>.<TRAEFIK_HOST>` (the guide's convention — no per-project DNS
+if that base domain has a wildcard record), or `DOMAIN_NAME=<fqdn>` for a custom domain,
+which wins when set. Leaving both empty is a hard error, not a malformed hostname.
+`SSL_EMAIL` stays empty here: the Hostinger Traefik project owns the ACME account.
+
+On a VPS without that template, add the bundled proxy (a separate file, so a plain
+`up` can never start it; same entrypoint and resolver names, so the app labels are
+unchanged):
 
 ```bash
 docker network create traefik-proxy            # once
-docker compose --profile standalone up -d --build
+docker compose -f docker-compose.yml -f docker-compose.standalone.yml up -d --build
 ```
 
 Only one Traefik per host may bind :80/:443. If another project already runs one,

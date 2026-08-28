@@ -1,0 +1,40 @@
+# OPT-IN OVERRIDE — shape (B) only: a VPS with no Hostinger Traefik project.
+#
+#   docker network create traefik-proxy    # once, if it doesn't exist
+#   docker compose -f docker-compose.yml -f docker-compose.standalone.yml up -d --build
+#
+# Deliberately a separate file, not a profile: profiles still interpolate, and a
+# second proxy binding :80/:443 on a host that already runs one is the failure this
+# split makes impossible. NEVER use this alongside Hostinger's Traefik project.
+#
+# Entrypoint (`websecure`) and resolver (`letsencrypt`) names match the Hostinger
+# template, so the app labels in docker-compose.yml are identical in both shapes.
+services:
+  traefik:
+    image: "traefik"
+    container_name: meteomapa-traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=${TRAEFIK_NETWORK:-traefik-proxy}"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      # Guarded: refuses to start rather than registering a placeholder address
+      # with Let's Encrypt. Only this file reads SSL_EMAIL.
+      - "--certificatesresolvers.letsencrypt.acme.email=${SSL_EMAIL:?set SSL_EMAIL in .env before starting the standalone proxy}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik_data:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - traefik-proxy
+
+volumes:
+  traefik_data:
