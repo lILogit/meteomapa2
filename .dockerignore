@@ -1,0 +1,23 @@
+# Secrets & local config — provided at runtime via env_file (.env), never baked in.
+.env
+.env.*
+!.env.example
+
+# Local virtualenv & caches (the image builds its own).
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Runtime data lives on the /data volume, not in the image.
+data_cache/
+
+# VCS & editor noise.
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+docker_samples/
+*.md
+.claude/

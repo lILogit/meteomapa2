@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meteomapa — CHMI Radar · South Bohemia</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Status panel: the prominent "rain at center" indicator -->
+  <div id="status" class="panel">
+    <div class="status-head">
+      <span id="status-glyph" class="glyph">·</span>
+      <div class="status-text">
+        <div id="status-label" class="status-label">Loading…</div>
+        <div id="status-detail" class="status-detail">Reading latest radar…</div>
+      </div>
+    </div>
+    <div class="status-coords">
+      <span class="k">Monitoring point</span>
+      <span id="status-coords" class="mono">—</span>
+      <span class="hint">(drag the ✛ or click the map to move)</span>
+    </div>
+    <div class="status-meta">
+      <div><span class="k">Rain rate</span><span id="status-mmh" class="v">— mm/h</span></div>
+      <div><span class="k">Coverage</span><span id="status-coverage" class="v">— %</span></div>
+      <div><span class="k">Updated</span><span id="status-updated" class="v">—</span></div>
+    </div>
+    <div id="status-verdict" class="status-verdict"></div>
+  </div>
+
+  <!-- Legend -->
+  <div id="legend" class="panel">
+    <div class="legend-title">Radar reflectivity (dBZ → mm/h)</div>
+    <img src="/static/assets/scl-dbz-mmh.png" alt="dBZ legend" />
+  </div>
+
+  <!-- Timeline scrubber -->
+  <div id="timeline" class="panel">
+    <div class="tl-top">
+      <div id="tl-time" class="tl-time">—</div>
+      <div id="tl-kind" class="tl-kind"></div>
+      <div class="tl-controls">
+        <button id="tl-step-back" title="Step back">⏮</button>
+        <button id="tl-play" title="Play / Pause">▶</button>
+        <button id="tl-step-fwd" title="Step forward">⏭</button>
+        <select id="tl-speed" title="Speed">
+          <option value="1000">0.5×</option>
+          <option value="500" selected>1×</option>
+          <option value="250">2×</option>
+        </select>
+        <button id="tl-live" title="Jump to latest">⏺ Live</button>
+      </div>
+    </div>
+    <div id="tl-track" class="tl-track">
+      <div id="tl-observed" class="tl-seg tl-observed"></div>
+    </div>
+    <div class="tl-legend">
+      <span class="dot obs"></span> observed
+      <span class="dot fct"></span> forecast (+10…+60 min)
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/js/timeline.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

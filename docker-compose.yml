@@ -1,0 +1,120 @@
+# METEOMAPA on a Hostinger VPS — routed by Traefik (TLS via Let's Encrypt).
+#
+# Two deployment shapes, one set of labels:
+#
+#  A) SHARED PROXY (default, Hostinger Docker Manager)
+#     Hostinger's "Traefik" project template runs one proxy for the whole VPS on
+#     :80/:443 and attaches to the external network `traefik-proxy`. Deploy this
+#     project alongside it: no ports are published here, Traefik discovers the app
+#     through the Docker socket and routes Host(`${DOMAIN_NAME}`) to it.
+#         docker compose up -d --build
+#     `${DOMAIN_NAME}` must resolve to the VPS IP (A record) before the first
+#     request, or the ACME challenge fails.
+#
+#  B) STANDALONE (VPS without the Hostinger template)
+#     Start the bundled traefik too — same entrypoints, same resolver name, so the
+#     app labels below are byte-identical in both shapes:
+#         docker network create traefik-proxy    # once, if it doesn't exist
+#         docker compose --profile standalone up -d --build
+#     Only ONE proxy may bind :80/:443 per host: if another project (e.g. CORTEX)
+#     already runs a Traefik, use shape (A) and join its network instead.
+#
+# ONE env file, named exactly `.env`, next to this compose file. Docker Compose
+# has two independent variable-lookup paths: `${DOMAIN_NAME}`-style interpolation
+# in this YAML (which Compose reads from a file literally named `.env` by
+# default, with NO flag needed) and `env_file:` below (which populates the `app`
+# container's actual runtime environment). They do not merge or fall back to
+# each other. Naming both paths at `.env` means plain `docker compose up -d
+# --build` just works, with zero flags to remember. cp .env.example .env here.
+services:
+  # Profile-gated: NOT started by a plain `docker compose up`. Only for shape (B).
+  traefik:
+    image: "traefik"
+    container_name: meteomapa-traefik
+    profiles: ["standalone"]
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      # Match the Hostinger template: the proxy watches only the shared network,
+      # so the resolver name and entrypoints below stay interchangeable with it.
+      - "--providers.docker.network=${TRAEFIK_NETWORK:-traefik-proxy}"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${SSL_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik_data:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - proxy
+
+  app:
+    build:
+      context: .
+    image: meteomapa:latest
+    container_name: meteomapa
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Persist cache/subscriptions on the mounted volume. Overrides CACHE_DIR in .env.
+      CACHE_DIR: /data
+      TZ: ${TZ:-Europe/Prague}
+    volumes:
+      - data:/data
+    networks:
+      # The shared proxy network — this is how Traefik reaches the app, on :8000.
+      - proxy
+    ports:
+      # loopback only — for SSH-tunnel debugging (`ssh -L 8765:localhost:8765 vps`).
+      # Traefik never uses this; it talks to the container over the proxy network.
+      # 8765 avoids colliding with other local apps (e.g. CORTEX on :8000).
+      # Drop this line entirely if you want zero host ports.
+      - "127.0.0.1:8765:8000"
+    labels:
+      - traefik.enable=true
+      # Router name `meteomapa` namespaces every rule below on the shared proxy,
+      # so other projects' routers/middlewares can't clash with these.
+      - traefik.http.routers.meteomapa.rule=Host(`${DOMAIN_NAME}`)
+      # HTTPS only; the proxy already redirects :80 → :443 for every project.
+      - traefik.http.routers.meteomapa.entrypoints=websecure
+      - traefik.http.routers.meteomapa.tls=true
+      - traefik.http.routers.meteomapa.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      # The app listens on 8000 inside the container (see Dockerfile EXPOSE).
+      # Required: with several networks/ports around, Traefik won't guess.
+      - traefik.http.services.meteomapa.loadbalancer.server.port=8000
+      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik-proxy}
+      - traefik.http.middlewares.meteomapa-headers.headers.SSLRedirect=true
+      - traefik.http.middlewares.meteomapa-headers.headers.STSSeconds=315360000
+      - traefik.http.middlewares.meteomapa-headers.headers.browserXSSFilter=true
+      - traefik.http.middlewares.meteomapa-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.meteomapa-headers.headers.forceSTSHeader=true
+      - traefik.http.middlewares.meteomapa-headers.headers.SSLHost=${DOMAIN_NAME}
+      - traefik.http.middlewares.meteomapa-headers.headers.STSIncludeSubdomains=true
+      - traefik.http.middlewares.meteomapa-headers.headers.STSPreload=true
+      - traefik.http.routers.meteomapa.middlewares=meteomapa-headers@docker
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health', timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  # Created by whoever owns the proxy — the Hostinger Traefik project in shape (A),
+  # or `docker network create traefik-proxy` in shape (B). External either way, so
+  # Compose joins the existing network instead of making a per-project one.
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik-proxy}
+
+volumes:
+  data:
+  traefik_data:
