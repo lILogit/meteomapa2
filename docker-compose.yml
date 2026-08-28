@@ -34,6 +34,11 @@ services:
     build:
       context: .
     image: meteomapa:latest
+    # `meteomapa:latest` is a LOCAL tag — it exists in no registry. Hostinger's deploy
+    # pipeline runs a `pull` step before `up`, which would otherwise ask Docker Hub for
+    # `docker.io/library/meteomapa` and fail with "pull access denied ... repository
+    # does not exist". `build` makes that step skip this service and build from source.
+    pull_policy: build
     container_name: meteomapa
     restart: unless-stopped
     env_file:

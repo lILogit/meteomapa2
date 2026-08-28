@@ -89,9 +89,28 @@ owns :80/:443 for the whole VPS and every app joins its external network
 the Docker socket and routes `Host(DOMAIN_NAME)` to the container's :8000, with
 Let's Encrypt TLS (`letsencrypt` resolver, `websecure` entrypoint).
 
+**Preflight — read the proxy's real settings off the running container** (its Compose
+project name prefixes them, e.g. `traefik-9ktg-traefik-1`). Do NOT assume the network
+is called `traefik-proxy`: if that project declared it without an explicit `name:`,
+Docker created `<project>_traefik-proxy`. Attaching to a freshly created bare
+`traefik-proxy` instead gives Traefik no route to the app — every request 502s while
+the config still looks correct.
+
 ```bash
-cp .env.example .env          # set DOMAIN_NAME, SSL_EMAIL, TELEGRAM_* ...
-docker compose up -d --build  # alongside the Hostinger Traefik project
+docker ps --filter name=traefik --format '{{.Names}}'          # the proxy container
+docker inspect <proxy> --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{"\n"}}{{end}}'
+docker inspect <proxy> --format '{{range .Config.Cmd}}{{println .}}{{end}}' \
+  | grep -E 'certificatesresolvers|entrypoints|providers.docker.network'
+```
+
+Put those into `.env` as `TRAEFIK_NETWORK` and `TRAEFIK_CERTRESOLVER` (both already
+variables — no compose edits). Create the network yourself *only* if the proxy is on
+none: `docker network create traefik-proxy`.
+
+```bash
+cp .env.example .env          # TRAEFIK_HOST or DOMAIN_NAME, TRAEFIK_*, TELEGRAM_* ...
+docker compose config         # resolves the Host() rule — check it before deploying
+docker compose up -d --build  # starts ONLY app; binds no public port
 ```
 
 Point the `DOMAIN_NAME` A record at the VPS **before** the first request; the ACME
